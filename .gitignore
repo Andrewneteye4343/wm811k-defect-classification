@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# 資料與產出（可重現，不入 git）
+data/
+artifacts/
+
+# OS
+.DS_Store
+Thumbs.db
