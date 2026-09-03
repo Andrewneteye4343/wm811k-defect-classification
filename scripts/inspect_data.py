@@ -38,6 +38,11 @@ import pandas as pd
 # 讓腳本可以直接執行（不需先 pip install 本專案），路徑對齊 src/wm811k/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from wm811k import config  # noqa: E402
+from wm811k.loader import (  # noqa: E402
+    load_lswmd,
+    register_pandas_legacy_aliases,
+    unwrap_scalar,
+)
 
 # Windows 主控台編碼（cp950）印中文可能出錯：改 UTF-8，缺字用 ? 取代不中斷
 if sys.stdout.encoding and "utf" not in sys.stdout.encoding.lower():
@@ -46,102 +51,6 @@ if sys.stdout.encoding and "utf" not in sys.stdout.encoding.lower():
 
 def section(title: str) -> str:
     return f"\n{'=' * 64}\n{title}\n{'=' * 64}"
-
-
-def _register_pandas_legacy_aliases() -> bool:
-    """LSWMD.pkl 是 pandas ~0.16（2015）存的舊 pickle。
-
-    當時 DataFrame 內部模組叫 pandas.indexes.*；pandas 0.20+ 重構改名為
-    pandas.core.indexes.*，新版 pandas 讀舊檔時 import('pandas.indexes.base')
-    會 ModuleNotFoundError。解法：讀取前把舊名 alias 到新模組 —
-    先註冊父套件與子模組到 sys.modules，反序列化時 import 直接命中 cache，
-    且拿到的是「同一個」新模組物件（class identity 正確）。
-    回傳 True 表示有註冊 alias（代表檔案確實是舊版 pandas 產物）。
-    """
-    import importlib
-    import sys
-
-    if "pandas.indexes" in sys.modules:
-        return False  # 環境裡已有（舊版 pandas 或先前已註冊）
-    try:
-        import pandas.indexes  # noqa: F401
-        return False
-    except ModuleNotFoundError:
-        pass  # 新版 pandas：需要 alias
-
-    parent = importlib.import_module("pandas.core.indexes")
-    sys.modules["pandas.indexes"] = parent
-    for sub in ("base", "range", "numeric", "multi", "period", "datetimes",
-                "timedeltas", "category", "interval", "datetimelike",
-                "offsets", "flags"):
-        try:
-            mod = importlib.import_module(f"pandas.core.indexes.{sub}")
-        except ModuleNotFoundError:
-            continue
-        sys.modules[f"pandas.indexes.{sub}"] = mod
-    # 更早的 pandas（0.13–0.15）用 pandas.core.index 路徑，一併 alias
-    sys.modules.setdefault("pandas.core.index",
-                           importlib.import_module("pandas.core.indexes.base"))
-    return True
-
-
-def _read_pickle_robust(path: Path):
-    """讀 LSWMD.pkl — 需相容「Python 2 + pandas 0.16」的雙重古董 pickle。
-
-    pandas 3.x 的 read_pickle 對 py2 pickle 的非 ASCII 字串（BINSTRING opcode）
-    拋 UnicodeDecodeError（'ascii' codec...）；且 pandas 3.x 已移除 py2 支援，
-    連官方 pickle_compat.Unpickler 也不再強制 latin1（實測仍用 ascii 解碼）。
-    解法：自訂 subclass 繼承 pickle_compat.Unpickler —— 保留它對舊 pandas
-    內部 module 名稱的對應表，但強制 encoding='latin1'（每 byte 對應一個
-    字元，永不失敗；ASCII 內容解碼結果完全相同，不影響統計）。
-    """
-    from pandas.compat import pickle_compat
-
-    class _CompatLatin1Unpickler(pickle_compat.Unpickler):
-        def __init__(self, *args, **kwargs):
-            kwargs["encoding"] = "latin1"
-            super().__init__(*args, **kwargs)
-
-    try:
-        return pd.read_pickle(path)  # 新 pickle 走 C 實作，快（1GB 檔差異大）
-    except (UnicodeDecodeError, ModuleNotFoundError, ImportError,
-            AttributeError):
-        with open(path, "rb") as f:
-            return _CompatLatin1Unpickler(f).load()
-
-
-def _unwrap_scalar(v, _depth: int = 0) -> str:
-    """把 py2 時代的巢狀容器解到最內層純量，統一成 str（空 → ""）。
-
-    真實資料的 object 欄位每格是巢狀結構（list/ndarray 任意組合），
-    例如 failureType = [['none']] 或 np.array(['none']) 或 []；
-    也可能直接是 bytes / None / NaN。遞迴解開直到純量：
-      [['none']] → 'none'；np.array(['none']) → 'none'；
-      [] / np.array([]) / None / NaN → ""；b'x' → 'x'
-    對無法辨識的型別回傳 <型別名>（寧可顯示也不卡住/報錯）。
-    """
-    if _depth > 5:
-        return f"<{type(v).__name__}>"
-    if isinstance(v, np.ndarray):
-        if v.ndim == 0:
-            v = v.item()
-        elif v.size == 0:
-            return ""
-        else:
-            v = v.flat[0]
-    elif isinstance(v, (list, tuple)):
-        if len(v) == 0:
-            return ""
-        v = v[0]
-    if isinstance(v, bytes):
-        return v.decode("latin1")
-    if isinstance(v, str):
-        return str(v)  # 純 str；np.str_ 等子類也一併轉乾淨
-    if v is None or (isinstance(v, float) and math.isnan(v)):
-        return ""
-    if isinstance(v, (int, float, np.integer, np.floating, np.bool_)):
-        return str(v)
-    return _unwrap_scalar(v, _depth + 1)
 
 
 def main() -> None:
@@ -170,9 +79,9 @@ def main() -> None:
     size_mb = path.stat().st_size / 1e6
     out(f"[load] {path.name}  ({size_mb:,.1f} MB)")
     t0 = time.time()
-    if _register_pandas_legacy_aliases():
+    if register_pandas_legacy_aliases():
         out("[load] 偵測到舊版 pandas pickle（pandas.indexes.*），已註冊相容 alias")
-    df = _read_pickle_robust(path)
+    df = load_lswmd(path)
     out(f"[load] 花 {time.time() - t0:.1f} 秒載入完成")
     out(f"       頂層型別 : {type(df).__name__}")
     out(f"       列數     : {len(df):,}")
@@ -202,7 +111,7 @@ def main() -> None:
     if not isinstance(sample, str):
         out(f"  （發現：failureType 每格為 {type(sample).__name__} 巢狀結構，"
             f"已自動解開為純量；空容器 = 無標籤）")
-    ft_norm = ft.map(_unwrap_scalar)
+    ft_norm = ft.map(unwrap_scalar)
     empty_ft = int((ft_norm == "").sum())
     labelled = ft_norm[ft_norm != ""]
     labelled_mask = (ft_norm != "").to_numpy()  # Section 5 Pass2 用
@@ -228,7 +137,7 @@ def main() -> None:
         col = ttl_cols[0]
         if col != "trainTestLabel":
             out(f"  （發現：實際欄位名為 {col!r}，原始資料拼法與文件不同）")
-        ttl = df[col].map(_unwrap_scalar)  # 巢狀結構先解開再統計
+        ttl = df[col].map(unwrap_scalar)  # 巢狀結構先解開再統計
         out(f"  NaN 數      : {int((ttl == '').sum()):,}")
         vc = ttl.value_counts(dropna=False)
         for k, n in vc.items():
@@ -326,7 +235,7 @@ def main() -> None:
 
     # ── 6. lotName / waferIndex ──
     out(section("6. lotName / waferIndex"))
-    ln = df["lotName"].map(_unwrap_scalar)  # 巢狀結構先解開
+    ln = df["lotName"].map(unwrap_scalar)  # 巢狀結構先解開
     wi = df["waferIndex"]
     out(f"  lotName NaN        : {int((ln == '').sum()):,}")
     out(f"  唯一 lot 數        : {ln.nunique():,}")

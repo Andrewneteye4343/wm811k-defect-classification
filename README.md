@@ -7,7 +7,7 @@
 
 - [x] **M0** 專案骨架與環境
 - [x] **M1** 資料取得與結構探查
-- [ ] **M2** EDA 與視覺化（9 類 vs 8 類、固定尺寸定案）
+- [x] **M2** EDA 與視覺化（9 類 vs 8 類、固定尺寸定案）
 - [ ] **M3** 前處理管線 + Dataset + 切分（pytest）
 - [ ] **M4** 小型 CNN 基線（手寫訓練迴圈）
 - [ ] **M5** 類別不平衡處理（weighted loss / sampler / 旋轉增強）
@@ -17,10 +17,21 @@
 
 ## 資料集
 
-- 811,457 張晶圓圖、來自 46,293 個 lot（實際探查值）
-- 僅 172,950 張（約 21%）有標籤；none（正常）佔約 85%
-- 來源：MIR Lab（論文：Wu, Jang & Chen, IEEE TSM 2015）
-- Kaggle：`qingyi/wm811k-wafer-map`（單一 `LSWMD.pkl`）
+- 811,457 張晶圓圖、來自 46,293 個 lot（M1 實測；文件寫 46,393 有誤）
+- 僅 172,950 張（21.3%）有標籤；none（正常）佔 85.2% → 極度類別不平衡
+- waferMap 數值語意（M2 自證 + 官方文件確認）：**1 = 正常 die（pass）、
+  2 = 缺陷 die（fail）、0 = 無 die（晶圓外背景）**
+- 來源：MIR Lab（論文：Wu, Jang & Chen, IEEE TSM 2015）；Kaggle：`qingyi/wm811k-wafer-map`
+
+## ML 前置決策（M2 EDA 定案，詳見 experiments/notes.md）
+
+- **9 類含 none**：none = 無系統性缺陷圖案（產線需判定正常片）；主指標 **macro-F1**
+  （accuracy 會被 85.2% 的 none 主導而自欺）
+- **輸入尺寸 32×32**：先裁最大內接方（wafer 圓內切方形陣列，裁掉皆背景、零資訊損失）
+  再等比縮放 → 避免直接 resize 把圓形壓成橢圓的幾何變形
+- **切分**：自行 stratified 70/15/15（種子 42）— 內建 split 無 validation 且
+  Test 68.6% 失衡；另保留 by-lot 洩漏對照實驗（M6）
+- **標籤標準化**：原始 Title Case（Edge-Ring…）→ lower() 統一
 
 ## 目錄結構
 

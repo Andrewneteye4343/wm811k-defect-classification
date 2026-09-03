@@ -8,3 +8,4 @@ seaborn
 scikit-learn
 pytest>=7
 kagglehub
+jupyterlab>=4
