@@ -99,3 +99,42 @@
   → M7 用混淆矩陣實證
 - lot 抽樣圖顯示同 lot wafer 高度相似 → lot 洩漏風險真實存在
 - 尺寸分佈確認多數圖 20–50 見方；dieSize 多離散值（不同產品線，非資料錯誤）
+
+---
+
+## M3 前處理管線 + Dataset + 切分（2026-09-03）
+
+執行：`python -m pytest`（**34 passed**：3 smoke + 5 loader + 17 preprocess + 9 data）
++ `python scripts/build_splits_report.py`（真實資料，~4 分鐘）。
+
+### 定案落地（M2 決策 → 程式碼）
+
+| 決策 | 實作 |
+|---|---|
+| 裁內接方 | `preprocess.crop_to_square`：以 die bbox 中心裁 min(高,寬) 見方（trim 全背景邊 → 比裁陣列中央穩健，off-center lot 不裁歪；die 全保留 = 零資訊損失，測試驗證非零像素數不變）|
+| 縮放 32×32 | `resize_map`：PIL **NEAREST** — waferMap 是離散類別 {0,1,2}，nearest 不產生 bilinear 的中間值 |
+| 標籤 lower() | `normalize_label` = unwrap_scalar + strip + lower（`labeled_frame` 批量套用）|
+| stratified 70/15/15 | `build_splits`：sklearn train_test_split 兩階段（第二階段 seed+1 避免兩次 shuffle 序列相關），回傳 position indices（train/val/test 共享同一份 df 零複製）|
+
+### 真實資料驗證數字（172,950 有標籤）
+
+| split | n | 類別比例（9 類序）— 每列與 all 一致 = stratify 生效 |
+|---|---|---|
+| all | 172,950 | 2.5/0.3/3.0/2.1/0.1/0.5/0.7/5.6/85.2% |
+| train | 121,065 (70.0%) | 同左（near-full 104 張）|
+| val | 25,942 (15.0%) | 同左（near-full 23 張）|
+| test | 25,943 (15.0%) | 同左（near-full 22 張）|
+
+near-full 全資料僅 149 張，val/test 仍各有 22–23 張 → minority 每區都有代表，
+這是隨機切分辦不到的（也是 M6 by-lot 對照要量化的另一面）。
+
+### 技術教訓
+
+- **pytest 全綠 ≠ `python scripts/x.py` 能跑**：pytest 靠 pytest.ini `pythonpath=src`
+  找套件；直接執行時 sys.path 只有 scripts/ → 每個可直接執行的 script 都要自帶
+  `sys.path.insert(0, parents[1]/"src")`（build_splits_report.py 初版漏了，M1 的
+  inspect_data.py 有 → 已統一 pattern）。
+- **PIL `np.asarray(img)` 回傳 read-only buffer** → `torch.from_numpy` 抱怨 →
+  用 `np.array(img)`（強制 copy，32×32 小圖成本可忽略）。
+- sklearn `train_test_split(stratify=)` 要求每類 ≥2 筆（兩階段切分時小類會踩）
+  → 測試合成資料每類給足樣本。
