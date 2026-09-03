@@ -1,0 +1,9 @@
+# build context 排除清單（重要！data/ 內 LSWMD.pkl 約 1GB，絕不能送進 build）
+.git
+data/
+artifacts/
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/

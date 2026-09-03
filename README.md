@@ -6,7 +6,7 @@
 ## 狀態（里程碑）
 
 - [x] **M0** 專案骨架與環境
-- [ ] **M1** 資料取得與結構探查
+- [x] **M1** 資料取得與結構探查
 - [ ] **M2** EDA 與視覺化（9 類 vs 8 類、固定尺寸定案）
 - [ ] **M3** 前處理管線 + Dataset + 切分（pytest）
 - [ ] **M4** 小型 CNN 基線（手寫訓練迴圈）
@@ -17,7 +17,7 @@
 
 ## 資料集
 
-- 811,457 張晶圓圖、來自 46,393 個 lot（真實晶圓廠量產資料）
+- 811,457 張晶圓圖、來自 46,293 個 lot（實際探查值）
 - 僅 172,950 張（約 21%）有標籤；none（正常）佔約 85%
 - 來源：MIR Lab（論文：Wu, Jang & Chen, IEEE TSM 2015）
 - Kaggle：`qingyi/wm811k-wafer-map`（單一 `LSWMD.pkl`）
@@ -47,6 +47,12 @@ wm811k-defect-classification/
 
 ## 開發環境
 
-- 訓練主場：**Google Colab**（GPU）；本機（4GB VRAM）為輔
-- Python 3.11 + PyTorch 2.x；管線用 pytest 驗證
-- Colab 起手（M1 後適用）：clone repo → `!pip install kagglehub` → 下載 `LSWMD.pkl` → 執行 scripts / notebook
+## 開發環境
+
+- **本機資料/管線**：Docker（Python 3.11 + torch-CPU）
+  docker compose build
+  docker compose run --rm app python scripts/inspect_data.py
+  docker compose run --rm app python -m pytest
+- **模型訓練**：Google Colab（GPU 主場）；本機 RTX 3050 Ti 4GB 為輔
+- 資料集放 `data/raw/LSWMD.pkl`（`data/`、`artifacts/` 不入 git）
+
