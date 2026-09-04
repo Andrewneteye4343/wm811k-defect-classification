@@ -87,6 +87,8 @@ def run_training(model, train_loader, val_loader, *, epochs: int = 30,
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = torch.device(device)
+    model = model.to(device)  # 關鍵：模型搬到 device（input 已 .to(device)，
+    # 兩者不一致會 RuntimeError — CPU 環境測不出這個 bug，GPU 才現形）
 
     criterion = nn.CrossEntropyLoss()  # M4 基線：無 class weight（M5 處理）
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
