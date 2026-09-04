@@ -181,3 +181,52 @@ scratch（細線、die 少）與小 loc cluster 在 32×32 縮放後 fail die �
 WM811K 分類的核心挑戰之一 = **fail die 密度連續體**（none ← 低密度缺陷 ←
 高密度結構圖案）。對比 edge-ring/center/near-full 有「大片高對比結構」
 → 遠離 none → 高分。M5 方向：weighted loss 直接懲罰「偷懶猜 none」。
+
+---
+
+## M5 類別不平衡實驗（2026-09-04）
+
+方法：一次一變因（同 seed、同切分、同 30 epochs），全記錄 experiments/runs.csv。
+
+### 結果對照（test macro-F1；baseline 錨點 0.7952）
+
+| run | 變因 | test macro-F1 | Δ | 判定 |
+|---|---|---|---|---|
+| m4_baseline | 無 | 0.7952 | — | 錨點 |
+| m5a_weighted_fixed | weighted CE（全權重，差距 1000 倍）| 0.7306 | −0.065 | ❌ 過度補償 |
+| m5b_sampler | balanced sampler | 0.7655 | −0.030 | ❌ 過度補償 |
+| m5c_augment | D4 增強 | 0.8122 | +0.017 | ✅ |
+| **m5d_combined** | **D4 增強 + sqrt 溫和權重** | **0.8238** | **+0.029** | ✅ **冠軍** |
+
+### 踩坑：m5a weights 全 1 bug（教訓深刻）
+
+m5a 首跑 log 顯示 `weights=[1,1,...×9]` — 原因：`y_train == c`（label 字串比對 int）
+全 False → counts 全 0 → 防呆給全 1 → weighted loss 靜默失效（等同 baseline）。
+⚠️ 早在使用者先前自跑 Colab 實驗就出現過 weights 全 1 紅旗，當時標記「需確認」
+未追 — 這次同訊號才確認為 bug。教訓：**看到 weights 全 1 / 任何「應該生效卻
+沒生效」的 log 訊號，立即停下來查 code，不要繼續跑**。修復：data.py 新增
+`label_counts()`（字串→index counts）+ 回歸測試（防再犯）。
+
+### 過度補償統一理論（兩個平衡方案的失敗模式）
+
+全權重 weighted（0.7306）與 balanced sampler（0.7655）都低於 baseline，
+失敗模式相同：把 minority 重要性拉高 → 模型過度補償 → 狂猜 minority →
+**precision 崩盤**（scratch precision：baseline 0.41 → sampler 0.18 →
+weighted 0.08）。權重差距 1000 倍太激進 + 訓練不穩（early stop @ epoch 11）。
+文獻常見現象：minority 稀少且與 none 在密度軸重疊時，強迫平衡犧牲 precision。
+
+### 溫和化成功（m5d）
+
+sqrt 權重（差距 1000→31 倍：none 0.36 vs near-full 11.37）不再過度補償：
+scratch F1 **0.537**（precision 0.57 保住、recall 0.51 拉高 — 對比 m5a_fixed
+precision 0.08 崩盤）。macro-F1 三階段演化：
+**0.7952（baseline）→ 0.8122（+augment）→ 0.8238（+sqrt 權重）**。
+權重代價：center/edge-loc/edge-ring/none 小降（−0.01~−0.02），但 minority
+大升（scratch +0.19、donut/random/near-full +0.04~0.08）→ 淨效應正向。
+
+### M5 最終配方（M6/M7 沿用）
+
+**WaferCNN + D4 augmentation（random_d4）+ CrossEntropy(sqrt 權重,
+power=0.5) + Adam lr 1e-3 + 30 epochs** → test macro-F1 **0.8238**。
+scratch 三階段：0.347（M4）→ 0.493（M5c）→ 0.537（M5d）。
+
