@@ -9,8 +9,8 @@
 - [x] **M1** 資料取得與結構探查
 - [x] **M2** EDA 與視覺化（9 類 vs 8 類、固定尺寸定案）
 - [x] **M3** 前處理管線 + Dataset + 切分（pytest）
-- [ ] **M4** 小型 CNN 基線（手寫訓練迴圈）
-- [ ] **M5** 類別不平衡處理（weighted loss / sampler / 旋轉增強）
+- [x] **M4** 小型 CNN 基線（手寫訓練迴圈）
+- [x] **M5** 類別不平衡處理（weighted loss / sampler / 旋轉增強）
 - [ ] **M6** 模型強化 + lot 洩漏對照
 - [ ] **M7** 可解釋性（Grad-CAM）與最終評估
 - [ ] **M8** 交付包裝（README 重現、demo）
