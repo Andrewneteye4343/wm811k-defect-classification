@@ -1,0 +1,2 @@
+run_name,variant,date,seed,epochs,lr,best_epoch,best_val_macro_f1,test_macro_f1,test_accuracy,note
+m4_baseline,baseline,2026-09-04,42,30,0.001,25,0.8152,0.7952,0.963,"M4 基線：WaferCNN 無權重 CE（Colab T4）"

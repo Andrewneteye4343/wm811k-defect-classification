@@ -82,15 +82,20 @@ def _save_checkpoint(model, out_dir: Path, epoch: int, val_f1: float) -> Path:
 
 def run_training(model, train_loader, val_loader, *, epochs: int = 30,
                  lr: float = 1e-3, device="cpu", out_dir="artifacts/m4_baseline",
-                 patience: int = 8, seed: int = 42) -> dict:
-    """完整訓練流程，回傳 history（dict of lists）。"""
+                 patience: int = 8, seed: int = 42, criterion=None) -> dict:
+    """完整訓練流程，回傳 history（dict of lists）。
+
+    criterion：可選傳入自訂 loss（M5 方案 A 用
+    nn.CrossEntropyLoss(weight=class_weights(...))）；None = 無權重基線。
+    """
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = torch.device(device)
     model = model.to(device)  # 關鍵：模型搬到 device（input 已 .to(device)，
     # 兩者不一致會 RuntimeError — CPU 環境測不出這個 bug，GPU 才現形）
 
-    criterion = nn.CrossEntropyLoss()  # M4 基線：無 class weight（M5 處理）
+    if criterion is None:
+        criterion = nn.CrossEntropyLoss()  # M4 基線：無 class weight（M5 處理）
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     out_dir = Path(out_dir)
 
