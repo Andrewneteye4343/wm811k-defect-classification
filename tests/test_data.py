@@ -10,6 +10,7 @@ from wm811k.data import (
     balanced_sampler,
     build_splits,
     class_weights,
+    label_counts,
     labeled_frame,
 )
 
@@ -121,6 +122,19 @@ def test_dataset_custom_size(fake_df):
 
 
 # ── class_weights / balanced_sampler / transform（M5）────────────
+
+def test_label_counts():
+    """str labels → per-class counts（LABEL_TO_IDX 對齊）。
+
+    防 m5a bug 回歸：counts 若用字串比 int 會全 0 → weights 全 1。
+    """
+    labels = np.array(["none"] * 100 + ["scratch"] * 10 + ["center"] * 5)
+    counts = label_counts(labels)
+    assert counts[config.LABEL_TO_IDX["none"]] == 100
+    assert counts[config.LABEL_TO_IDX["scratch"]] == 10
+    assert counts[config.LABEL_TO_IDX["center"]] == 5
+    assert counts.sum() == 115
+
 
 def test_class_weights_balanced():
     """每類數量相等 → 權重全等（無偏見）。"""

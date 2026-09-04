@@ -37,7 +37,7 @@ from wm811k import config  # noqa: E402
 from wm811k.augment import random_d4  # noqa: E402
 from wm811k.data import (  # noqa: E402
     WM811KDataset, balanced_sampler, build_splits, class_weights,
-    labeled_frame,
+    label_counts, labeled_frame,
 )
 from wm811k.evaluate import evaluate_model  # noqa: E402
 from wm811k.loader import load_lswmd  # noqa: E402
@@ -107,8 +107,9 @@ def main() -> None:
     # ── 組裝變因（一次一變因的核心邏輯）──
     criterion = None
     if args.loss_weight:
-        counts = np.array([(y_train == c).sum() for c in range(
-            config.NUM_CLASSES)])
+        # 注意：counts 必須由 label_counts 轉 index（字串比 int 會全 False
+        # → weights 全 1 → weighted loss 靜默失效，2026-09-04 m5a 踩過）
+        counts = label_counts(y_train)
         w = class_weights(counts)
         criterion = nn.CrossEntropyLoss(weight=w.to("cuda"
                         if torch.cuda.is_available() else "cpu"))

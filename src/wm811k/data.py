@@ -65,6 +65,20 @@ def build_splits(df_labeled: pd.DataFrame, seed: int | None = None):
     return train_idx, val_idx, test_idx
 
 
+def label_counts(labels, num_classes: int | None = None) -> np.ndarray:
+    """標準化 label 字串陣列 → per-class counts（對齊 config.LABEL_TO_IDX）。
+
+    ⚠️ 防呆來源（2026-09-04 m5a 實測 bug）：counts 必須用 label **index**
+    比對 — 若拿字串 label 直接比 int（`y_train == 3`）會全 False →
+    counts 全 0 → class_weights 防呆給全 1 → weighted loss 靜默失效
+    （log 顯示 weights=[1,1,...] 但無人察覺，等同跑 baseline）。
+    """
+    idx = np.array([config.LABEL_TO_IDX[s] for s in labels], dtype=np.int64)
+    num_classes = config.NUM_CLASSES if num_classes is None else num_classes
+    return np.array([(idx == c).sum() for c in range(num_classes)],
+                    dtype=np.int64)
+
+
 def class_weights(counts: np.ndarray) -> torch.Tensor:
     """頻率反比類別權重：w_c = N / (K * N_c)。
 
