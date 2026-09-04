@@ -55,26 +55,34 @@ def evaluate_model(model, loader, device="cpu", out_png: str | None = None,
 
 
 def _plot_confusion(C: np.ndarray, path: Path, title: str) -> None:
-    """混淆矩陣熱圖（實際值 × 預測值，含數字標註）。"""
+    """混淆矩陣熱圖（實際值 × 預測值，含數字標註）。
+
+    色階用 LogNorm：類別數量懸殊（none 22k vs donut 83），線性色階會被
+    多數類霸佔 → minority 格全白看不出差異。對數色階讓 22,115 與 100
+    的色差從 221:1 縮到 ~2:1，各類混淆都可見；數字標註保留原始 count。
+    """
     import matplotlib
     matplotlib.use("Agg")
+    import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
 
     labels = config.FAILURE_TYPES
+    norm = mcolors.LogNorm(vmin=1, vmax=max(C.max(), 1))  # vmin=1：0 值視同最淺
     fig, ax = plt.subplots(figsize=(9, 8))
-    im = ax.imshow(C, cmap="Blues")
+    im = ax.imshow(C, cmap="Blues", norm=norm)
     ax.set_xticks(range(config.NUM_CLASSES), labels, rotation=45, ha="right")
     ax.set_yticks(range(config.NUM_CLASSES), labels)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     ax.set_title(title)
-    # 數字標註（none 數量級太大 → 用科學記號或縮放色）
     for i in range(config.NUM_CLASSES):
         for j in range(config.NUM_CLASSES):
             v = C[i, j]
             if v > 0:
+                # 深色格用白字（LogNorm 空間的相對深度決定）
+                white = float(norm(v)) > 0.55
                 ax.text(j, i, f"{v:,}", ha="center", va="center", fontsize=7,
-                        color="white" if v > C.max() * 0.5 else "black")
+                        color="white" if white else "black")
     fig.colorbar(im, fraction=0.046)
     fig.tight_layout()
     fig.savefig(path, dpi=120)
