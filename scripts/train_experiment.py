@@ -72,6 +72,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="M5 experiment runner")
     ap.add_argument("--run-name", required=True)
     ap.add_argument("--loss-weight", action="store_true", help="方案 A")
+    ap.add_argument("--weight-power", type=float, default=1.0,
+                    help="權重指數（1.0=原始；0.5=sqrt 溫和化，m5d 用）")
     ap.add_argument("--balanced-sampler", action="store_true", help="方案 B")
     ap.add_argument("--augment", action="store_true", help="方案 C")
     ap.add_argument("--epochs", type=int, default=30)
@@ -110,10 +112,11 @@ def main() -> None:
         # 注意：counts 必須由 label_counts 轉 index（字串比 int 會全 False
         # → weights 全 1 → weighted loss 靜默失效，2026-09-04 m5a 踩過）
         counts = label_counts(y_train)
-        w = class_weights(counts)
+        w = class_weights(counts, power=args.weight_power)
         criterion = nn.CrossEntropyLoss(weight=w.to("cuda"
                         if torch.cuda.is_available() else "cpu"))
-        print(f"      [A] weighted CE  weights={np.round(w.numpy(), 2)}")
+        print(f"      [A] weighted CE (power={args.weight_power})  "
+              f"weights={np.round(w.numpy(), 2)}")
 
     sampler = None
     if args.balanced_sampler:

@@ -159,6 +159,18 @@ def test_class_weights_zero_count_guard():
     assert torch.isfinite(w).all()
 
 
+def test_class_weights_power_softens():
+    """power<1 壓縮權重差距（m5d sqrt 溫和化）。"""
+    counts = np.array([900, 100])  # 9:1 → 原始權重差 9 倍
+    w1 = class_weights(counts, power=1.0).numpy()
+    w05 = class_weights(counts, power=0.5).numpy()
+    ratio1 = w1[1] / w1[0]
+    ratio05 = w05[1] / w05[0]
+    assert ratio1 == pytest.approx(9.0)
+    assert ratio05 == pytest.approx(3.0)  # sqrt(9)
+    assert 1 < ratio05 < ratio1
+
+
 def test_balanced_sampler_config():
     """驗證 sampler 設定（確定性檢查，不依賴 RNG 抽樣統計）。
 

@@ -79,12 +79,15 @@ def label_counts(labels, num_classes: int | None = None) -> np.ndarray:
                     dtype=np.int64)
 
 
-def class_weights(counts: np.ndarray) -> torch.Tensor:
-    """頻率反比類別權重：w_c = N / (K * N_c)。
+def class_weights(counts: np.ndarray, power: float = 1.0) -> torch.Tensor:
+    """頻率反比類別權重：w_c = (N / (K * N_c)) ** power。
 
     - N = 總樣本數、K = 類別數、N_c = 類別 c 的樣本數
-    - none（85.2%）權重 ~0.13、near-full（0.1%）權重 ~112 → CrossEntropy
+    - none（85.2%）權重 ~0.13、near-full（0.1%）權重 ~129 → CrossEntropy
       對 minority 的錯誤懲罰大幅提高（M5 方案 A）
+    - power < 1.0 溫和化（m5d 用 0.5 = sqrt）：m5a_fixed 實測全權重
+      （差距 1000 倍）讓模型過度補償 → minority precision 崩（scratch
+      precision 0.08、macro 0.7306）；sqrt 把差距壓到 ~31 倍是常見緩解
     - 防呆：counts=0 的類給權重 1（stratify 保證 train 每類都有，正常不會發生）
     """
     counts = np.asarray(counts, dtype=np.float64)
@@ -93,7 +96,7 @@ def class_weights(counts: np.ndarray) -> torch.Tensor:
     # np.where 的三參數都會先被求值 → 0 除會噴 RuntimeWarning，
     # 用 errstate 靜音（counts>0 的分支才有效，0 的分支最後選 1.0）
     with np.errstate(divide="ignore", invalid="ignore"):
-        w = np.where(counts > 0, n / (k * counts), 1.0)
+        w = np.where(counts > 0, (n / (k * counts)) ** power, 1.0)
     return torch.tensor(w, dtype=torch.float32)
 
 
