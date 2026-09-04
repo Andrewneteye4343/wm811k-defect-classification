@@ -91,7 +91,7 @@ def test_dataset_len_and_getitem_shape(fake_df):
     ds = WM811KDataset(lf, np.arange(10))
     assert len(ds) == 10
     x, y = ds[0]
-    assert x.shape == (config.TARGET_SIZE, config.TARGET_SIZE)
+    assert x.shape == (1, config.TARGET_SIZE, config.TARGET_SIZE)
     assert x.dtype == torch.float32
     assert float(x.min()) >= 0.0 and float(x.max()) <= 2.0
     assert 0 <= y < config.NUM_CLASSES
@@ -111,4 +111,4 @@ def test_dataset_custom_size(fake_df):
     lf = labeled_frame(fake_df)
     ds = WM811KDataset(lf, np.arange(5), size=16)
     x, _ = ds[0]
-    assert x.shape == (16, 16)
+    assert x.shape == (1, 16, 16)

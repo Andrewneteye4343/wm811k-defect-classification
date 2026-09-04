@@ -74,8 +74,9 @@ class WM811KDataset(Dataset):
     抽 list 不複製資料（172,950 張原始圖只在記憶體一份）。
 
     getitem 回傳 (x, y)：
-      x = float32 (TARGET_SIZE, TARGET_SIZE)，值域 {0,1,2}（未歸一化 —
-          normalization 是 M4 訓練迴圈/transform 的職責）
+      x = float32 (1, TARGET_SIZE, TARGET_SIZE)（CV 慣例含 channel dim；
+          conv 需要 (B,C,H,W)，batch 由 DataLoader 疊出）
+         值域 {0,1,2}（未歸一化 — normalization 是 M4 訓練迴圈/transform 的職責）
       y = int label index（對齊 config.LABEL_TO_IDX）
     """
     def __init__(self, df_labeled: pd.DataFrame, indices,
@@ -91,6 +92,6 @@ class WM811KDataset(Dataset):
     def __getitem__(self, i: int):
         idx = int(self.indices[i])
         wm = preprocess_map(self.maps[idx], self.size)
-        x = torch.from_numpy(wm).float()  # (32, 32) float32 {0,1,2}
+        x = torch.from_numpy(wm).float().unsqueeze(0)  # (1, 32, 32)
         y = config.LABEL_TO_IDX[self.labels[idx]]
         return x, y
