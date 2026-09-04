@@ -138,3 +138,46 @@ near-full 全資料僅 149 張，val/test 仍各有 22–23 張 → minority 每
   用 `np.array(img)`（強制 copy，32×32 小圖成本可忽略）。
 - sklearn `train_test_split(stratify=)` 要求每類 ≥2 筆（兩階段切分時小類會踩）
   → 測試合成資料每類給足樣本。
+
+---
+
+## M4 基線 CNN（2026-09-04）
+
+執行：Colab T4 GPU、`scripts/train_baseline.py --epochs 30`（30 epochs 跑滿、
+best @ epoch 25 — 未觸發 early stop）。修正：run_training 漏 `model.to(device)`
+（GPU 首跑即 RuntimeError — CPU 冒煙測不出 device bug）。
+
+### 基線結果（WaferCNN 155,657 參數、無權重 CrossEntropy、Adam lr 1e-3）
+
+| 指標 | 值 | 對照 |
+|---|---|---|
+| test macro-F1 | **0.7952** | naive 全猜 none ≈ 0.10 |
+| test accuracy | 0.9630 | none 主導（僅對照）|
+| best val macro-F1 | 0.8152 @ epoch 25 | |
+
+per-class test F1：none 0.984 / edge-ring 0.966 / center 0.905 / near-full 0.889 /
+donut 0.826 / random 0.825 / edge-loc 0.757 / loc 0.657 / **scratch 0.347**（最弱，
+印證文獻 MathWorks 實測 Scratch 最難）。near-full 僅 22 張卻 0.889 — 圖案極端
+明確（幾乎全黑）→ 少樣本但與其他類距離遠。
+
+### 學習曲線觀察（overfitting 活教材）
+
+epoch 1 完 val macro-F1 已 0.598（121k 樣本一輪內完成大部分學習，「全猜 none」
+的 0.10 起點只存在於 epoch 0）；epoch 12–30 macro-F1 高原 ~0.75–0.81；
+**epoch 17 起 train_loss 續降（0.065→0.042）但 val_loss 反向上升（0.148→0.227）**
+= overfitting 開始 → early stopping 的 patience 8 保護 checkpoint 停在 epoch 25。
+
+### 混淆矩陣流向（LogNorm 圖觀察，Andrew 實測回報）
+
+- **scratch 誤判流向（多→少）：none > loc > edge-loc** — scratch recall 僅 0.30
+- **loc 誤判流向：none > scratch > edge-loc**
+- **edge-ring ↔ none 無明顯互混** → 修正 M2 預測（視覺直覺被資料推翻）
+
+### 密度軸統一理論（M2 random/none 發現的延伸）
+
+scratch（細線、die 少）與小 loc cluster 在 32×32 縮放後 fail die 密度低 →
+**在密度軸上靠近 none** → 被併入 none。誤判根源不是「形狀相似」而是
+「低密度圖案 ≈ none」— 與 M2 random/none 的密度軸發現串成同一條線：
+WM811K 分類的核心挑戰之一 = **fail die 密度連續體**（none ← 低密度缺陷 ←
+高密度結構圖案）。對比 edge-ring/center/near-full 有「大片高對比結構」
+→ 遠離 none → 高分。M5 方向：weighted loss 直接懲罰「偷懶猜 none」。
