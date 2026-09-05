@@ -80,7 +80,8 @@ class GradCAM:
         cam = cam.squeeze()
         # 歸一化 0~1（除最大值；全零時保持零）
         m = cam.max()
-        return cam / m if m > 0 else cam
+        # detach：熱圖是輸出資料（要 .numpy() 畫圖），不需梯度
+        return (cam / m if m > 0 else cam).detach()
 
     def __del__(self):
         self._fwd_h.remove()
