@@ -230,3 +230,79 @@ precision 0.08 崩盤）。macro-F1 三階段演化：
 power=0.5) + Adam lr 1e-3 + 30 epochs** → test macro-F1 **0.8238**。
 scratch 三階段：0.347（M4）→ 0.493（M5c）→ 0.537（M5d）。
 
+---
+
+## M6 模型強化 + lot 洩漏對照（2026-09-05）
+
+方法：m6a_resnet（ResNetWafer × M5d 配方）對照 m5d；m6b_by_lot
+（WaferCNN × M5d 配方 × GroupShuffleSplit by lotName）量化洩漏。
+
+### 結果對照
+
+| run | 模型/切分 | test macro-F1 | 備註 |
+|---|---|---|---|
+| m5d_combined | WaferCNN / 隨機 | **0.8238** | 冠軍（M5）|
+| m6a_resnet | ResNetWafer / 隨機 | 0.8193 | 略輸（early stop @14）|
+| m6b_by_lot | WaferCNN / by-lot | **0.8016** | **誠實估計** |
+
+### m6a：殘差網為何沒贏（但 scratch 最強）
+
+ResNetWafer（174,905 參數、BN+GAP）macro 0.8193 < WaferCNN 0.8238。
+觀察：
+- **收斂快但早停**：epoch 6 就到 val 0.8216，之後 8 epochs 沒破 → early
+  stop @14。WaferCNN 慢熱但持續爬到 epoch 23–29 — 對照組同設定下
+  殘差網沒吃到「深層優勢」（30 epochs 內 BN 加速反而先觸頂）
+- **GAP 空間損失假說**：edge-loc 0.705 / loc 0.689（低於 m5d 的
+  0.730/0.707）— GAP 把 4×4 平均成 1 值，丟失「缺陷在 wafer 邊緣/位置」
+  的空間資訊；WaferCNN 的 flatten+FC 保留位置
+- **但 scratch F1 0.592 全場最佳**（m5d 0.537）：precision 0.837 —
+  殘差特徵對細線更精準（誤判少）
+- 結論：主指標（macro-F1）下 M5d WaferCNN 維持冠軍；殘差網的 scratch
+  優勢是 M7 錯誤分析的對照素材
+
+### m6b：洩漏水分只有 0.022（好消息）
+
+by-lot 切分（train/val/test lot 互斥、模型沒見過 test lot 任何 wafer）
+0.8016 vs 隨機切分 0.8238 → **洩漏高估 ≈ 0.022 macro-F1（2.2pp）**。
+低於直覺預期 → 模型主要學到 wafer 圖案的泛化特徵（而非記住 lot）。
+per-class 變化：scratch 0.449（precision 0.334 崩 — test 的 scratch lot
+沒見過 → 過度預測）、donut 0.795、random 0.844（升）。
+面試敘事：「隨機切分 0.82 vs lot 隔離 0.80 — 即使從沒見過的 lot 上
+模型仍有 0.80，證明學的是圖案特徵不是 lot 記憶」。
+
+### 最終模型決策（M7 用）
+
+**M5d WaferCNN checkpoint**（artifacts/runs/m5d_combined/best_model.pt）：
+macro-F1 最高（0.8238）且有 by-lot 誠實數字（0.8016）雙重背書。
+
+### ⚠️ 重跑翻案（2026-09-05 補充）— single-run 比較的教訓
+
+第一次 m6a（0.8193、early stop @14）結論「殘差網輸」**是錯的**。
+同 seed 42 重跑 → 0.8438（跑滿 @29）。原因：Colab 每次 session GPU
+可能不同（T4/L4/A100）+ cuDNN 非確定性 + 早停連鎖（epoch 6 觸頂後
+卡 8 epochs 提早出局，看不到 epoch 11+ 的突破）。
+**教訓：同 seed 只保證同環境內可重現，不保證跨環境；模型比較需
+multiple runs（mean±std），單 run 定生死會被環境波動騙**（0.82-0.84
+都是 noise 範圍內的可能值）。
+
+### M6 最終定案（重跑後）— ResNetWafer 全面勝出
+
+| run | 模型/切分 | test macro-F1 |
+|---|---|---|
+| m5d | WaferCNN / 隨機 | 0.8238 |
+| m6a_resnet（重跑）| ResNetWafer / 隨機 | 0.8438 |
+| m6b_by_lot（重跑）| WaferCNN / by-lot | 0.8066 |
+| **m6c_resnet_by_lot** | **ResNetWafer / by-lot** | **0.8359** |
+
+- **最終模型 = ResNetWafer**（m6a_resnet checkpoint，0.8438）：隨機切分
+  與 by-lot（0.8359）雙雙勝過 WaferCNN（0.8238/0.8066）
+- 洩漏水分：ResNet ≈ 0.008–0.03 < WaferCNN ≈ 0.017–0.022 → ResNet
+  不只更強、且更不依賴 lot 洩漏（學到更泛化特徵）
+- 亮點：**ResNet by-lot（0.8359）> WaferCNN 隨機切分（0.8238）** —
+  架構改進的 gain 比隨機切分水分還大 → 0.8359 是真本事
+- per-class（by-lot 誠實環境）：scratch 0.596（WaferCNN by-lot 0.460
+  → +0.135，殘差對細線強）、random 0.899、near-full 0.955；
+  center 0.842（recall 高 precision 低 — 過度預測 center）
+
+
+

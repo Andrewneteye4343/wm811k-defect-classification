@@ -1,3 +1,6 @@
 run_name,variant,date,seed,epochs,lr,best_epoch,best_val_macro_f1,test_macro_f1,test_accuracy,note
 m4_baseline,baseline,2026-09-04,42,30,0.001,25,0.8152,0.7952,0.963,M4 基線：WaferCNN 無權重 CE（Colab T4）
 m5d_combined,weighted+augment,2026-09-04,42,30,0.001,23,0.825,0.8238,0.96172,
+m6a_resnet,weighted+augment,2026-09-05,42,30,0.001,29,0.84131,0.84383,0.96153,
+m6b_by_lot,weighted+augment,2026-09-05,42,30,0.001,22,0.8065,0.80658,0.9579,
+m6c_resnet_by_lot,weighted+augment,2026-09-05,42,30,0.001,17,0.83334,0.83589,0.95862,
