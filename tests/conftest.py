@@ -30,18 +30,27 @@ def make_wafer(rows=None, cols=None, radius=None, n_fail=2, seed=0):
 
 
 def make_labeled_df(n_per_class=6, include_unlabeled=True, seed=42):
-    """合成有標籤 DataFrame：9 類各 n_per_class 張 +（可選）3 張無標籤。"""
+    """合成有標籤 DataFrame：9 類各 n_per_class 張 +（可選）3 張無標籤。
+
+    lotName：每 3 張同 lot（模擬真實：lot 內 wafer 相似；M6b by-lot 測試用）。
+    """
     rng = np.random.default_rng(seed)
-    maps, labels = [], []
+    maps, labels, lots = [], [], []
+    idx = 0
     for cls in config.FAILURE_TYPES:
         for _ in range(n_per_class):
             maps.append(make_wafer(seed=int(rng.integers(1_000_000))))
             labels.append(np.array([[cls]]))  # 模擬 2D 巢狀容器
+            lots.append(np.array([[f"L{idx // 3}"]]))  # 巢狀 lotName
+            idx += 1
     if include_unlabeled:
         for _ in range(3):
             maps.append(make_wafer(seed=int(rng.integers(1_000_000))))
             labels.append(np.array([[]], dtype=object))  # 空容器 = 無標籤
-    return pd.DataFrame({"waferMap": maps, "failureType": labels})
+            lots.append(np.array([[f"U{idx // 3}"]]))
+            idx += 1
+    return pd.DataFrame(
+        {"waferMap": maps, "failureType": labels, "lotName": lots})
 
 
 @pytest.fixture

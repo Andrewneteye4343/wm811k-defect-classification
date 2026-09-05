@@ -9,6 +9,7 @@ from wm811k.data import (
     WM811KDataset,
     balanced_sampler,
     build_splits,
+    build_splits_by_lot,
     class_weights,
     label_counts,
     labeled_frame,
@@ -80,7 +81,9 @@ def test_splits_stratified_imbalanced_minority():
     rng = np.random.default_rng(0)
     maps = [make_wafer(seed=int(rng.integers(1_000_000))) for _ in range(200)]
     labels = [np.array([["normal"]])] * 180 + [np.array([["rare"]])] * 20
-    df = pd.DataFrame({"waferMap": maps, "failureType": labels})
+    lots = [np.array([[f"X{i // 5}"]]) for i in range(200)]
+    df = pd.DataFrame(
+        {"waferMap": maps, "failureType": labels, "lotName": lots})
     lf = labeled_frame(df)
     tr, va, te = build_splits(lf)
     y = lf["label"].to_numpy()
@@ -169,6 +172,26 @@ def test_class_weights_power_softens():
     assert ratio1 == pytest.approx(9.0)
     assert ratio05 == pytest.approx(3.0)  # sqrt(9)
     assert 1 < ratio05 < ratio1
+
+
+def test_build_splits_by_lot_isolates_lots():
+    """by-lot 切分的核心保證：同 lot 不跨 split（洩漏對照的前提）。"""
+    df = make_labeled_df(n_per_class=20, include_unlabeled=False)
+    lf = labeled_frame(df)  # 180 張、60 個 lot（每 3 張同 lot）
+    tr, va, te = build_splits_by_lot(lf, seed=42)
+    lot_tr = set(lf["lot"].to_numpy()[tr])
+    lot_va = set(lf["lot"].to_numpy()[va])
+    lot_te = set(lf["lot"].to_numpy()[te])
+    # 三組 lot 兩兩互斥（模型沒見過 test lot 的任何 wafer）
+    assert lot_tr.isdisjoint(lot_va)
+    assert lot_tr.isdisjoint(lot_te)
+    assert lot_va.isdisjoint(lot_te)
+    # 樣本不重複、總數不變
+    assert len(set(tr) & set(va) & set(te)) == 0
+    assert len(tr) + len(va) + len(te) == len(lf)
+    # 比例近似 70/15/15（lot 不可拆 → 允許較寬容差）
+    assert len(tr) / len(lf) == pytest.approx(0.7, abs=0.06)
+    assert len(va) / len(lf) == pytest.approx(0.15, abs=0.06)
 
 
 def test_balanced_sampler_config():

@@ -36,12 +36,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from wm811k import config  # noqa: E402
 from wm811k.augment import random_d4  # noqa: E402
 from wm811k.data import (  # noqa: E402
-    WM811KDataset, balanced_sampler, build_splits, class_weights,
-    label_counts, labeled_frame,
+    WM811KDataset, balanced_sampler, build_splits, build_splits_by_lot,
+    class_weights, label_counts, labeled_frame,
 )
 from wm811k.evaluate import evaluate_model  # noqa: E402
 from wm811k.loader import load_lswmd  # noqa: E402
-from wm811k.model import WaferCNN  # noqa: E402
+from wm811k.model import ResNetWafer, WaferCNN  # noqa: E402
 from wm811k.train import run_training  # noqa: E402
 
 RUNS_CSV = Path(__file__).resolve().parents[1] / "experiments" / "runs.csv"
@@ -76,6 +76,10 @@ def main() -> None:
                     help="權重指數（1.0=原始；0.5=sqrt 溫和化，m5d 用）")
     ap.add_argument("--balanced-sampler", action="store_true", help="方案 B")
     ap.add_argument("--augment", action="store_true", help="方案 C")
+    ap.add_argument("--model", choices=["wafercnn", "resnet"],
+                    default="wafercnn", help="M6a：模型架構")
+    ap.add_argument("--by-lot", action="store_true",
+                    help="M6b：GroupShuffleSplit by lotName（洩漏對照）")
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -103,6 +107,9 @@ def main() -> None:
         print(f"      smoke subset: {len(lf):,} labeled rows")
 
     tr, va, te = build_splits(lf, seed=args.seed)
+    if args.by_lot:
+        tr, va, te = build_splits_by_lot(lf, seed=args.seed)
+        print(f"      [by-lot] GroupShuffleSplit by lotName (lot 不跨 split)")
     y_train = lf["label"].to_numpy()[tr]
     print(f"[2/6] Split: train {len(tr):,} / val {len(va):,} / test {len(te):,}")
 
@@ -138,9 +145,10 @@ def main() -> None:
     test_loader = DataLoader(WM811KDataset(lf, te), batch_size=args.batch_size)
 
     print(f"[4/6] Training on {device} ... (variant={variant})")
-    model = WaferCNN(num_classes=config.NUM_CLASSES)
+    model_cls = ResNetWafer if args.model == "resnet" else WaferCNN
+    model = model_cls(num_classes=config.NUM_CLASSES)
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"      WaferCNN parameters: {n_params:,}")
+    print(f"      {model_cls.__name__} parameters: {n_params:,}")
     history = run_training(
         model, train_loader, val_loader,
         epochs=args.epochs, lr=args.lr, device=device,

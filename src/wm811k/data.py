@@ -31,6 +31,7 @@ def labeled_frame(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = df.copy()
     out["label"] = out["failureType"].map(unwrap_scalar).str.strip().str.lower()
+    out["lot"] = out["lotName"].map(unwrap_scalar)  # M6b by-lot 切分用
     return out[out["label"] != ""].reset_index(drop=True)
 
 
@@ -63,6 +64,41 @@ def build_splits(df_labeled: pd.DataFrame, seed: int | None = None):
         random_state=seed + 1,  # 避免兩次 shuffle 序列相同
     )
     return train_idx, val_idx, test_idx
+
+
+def build_splits_by_lot(lf: pd.DataFrame, seed: int = 42):
+    """by-lot 切分：同 lot 的 wafer 不跨 split（M6b 洩漏對照）。
+
+    兩階段 GroupShuffleSplit：
+      ① train vs holdout lots（樣本比 70/30，lot 為單位不可拆）
+      ② holdout lots 內 val vs test lots（50/50）
+    → train/val/test 三組 lot 互斥，模型從沒見過 test lot 的任何 wafer。
+
+    為什麼重要（M2 發現：同 lot wafer 高度相似）：隨機切分會讓相似
+    wafer 同時進 train/test → 模型「記得 lot」而非「學會泛化」→ 高估。
+    by-lot 分數 vs 隨機切分分數的差距 = 洩漏水分（面試故事：0.82 是
+    真本事還是洩漏？答案在 runs.csv）。
+
+    注意：GroupShuffleSplit 的 test_size 是「樣本」比例（lot 不可拆 →
+    大 lot 會讓實際比例略偏）；且無法 stratify（lot 結構 vs 類別比例
+    不可兼得 — 這是誠實評估的代價）。
+    """
+    from sklearn.model_selection import GroupShuffleSplit
+
+    lots = lf["lot"].to_numpy()
+    n = len(lf)
+    idx = np.arange(n)
+
+    gss1 = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=seed)
+    tr_pos, hold_pos = next(gss1.split(idx, groups=lots))
+    tr_idx, hold_idx = idx[tr_pos], idx[hold_pos]
+
+    gss2 = GroupShuffleSplit(n_splits=1, test_size=0.5,
+                             random_state=seed + 1)
+    va_pos, te_pos = next(gss2.split(hold_idx, groups=lots[hold_idx]))
+    va_idx, te_idx = hold_idx[va_pos], hold_idx[te_pos]
+
+    return tr_idx, va_idx, te_idx
 
 
 def label_counts(labels, num_classes: int | None = None) -> np.ndarray:
